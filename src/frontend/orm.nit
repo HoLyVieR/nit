@@ -45,17 +45,43 @@ private class OrmPhasePhaseOne
 		# Ignore class with no field annotation
 		if count_fields_prop > 0 then
 			# Stub for the "orm_read_fields" function
-			var code = "fun orm_read_fields: Array[OrmFieldInfo] do abort"
+			var code = "redef fun orm_read_fields: Array[OrmFieldInfo] do abort"
 			var npropdef = toolcontext.parse_propdef(code).as(AMethPropdef)
 			nclassdef.n_propdefs.add npropdef
 			nclassdef.parent.as(AModule).read_fields_to_fill.add npropdef
 
 			# Stub for the "orm_write_fields" function
-			code = "fun orm_write_fields(data : HashMap[String, Object]) do abort"
+			code = "redef fun orm_write_fields(data : HashMap[String, nullable Object]) do abort"
 			npropdef = toolcontext.parse_propdef(code).as(AMethPropdef)
 			nclassdef.n_propdefs.add npropdef
 			nclassdef.parent.as(AModule).write_fields_to_fill.add npropdef
 		end
+	end
+
+	redef fun process_nmodule(nmodule)
+	do
+		for nclassdef in nmodule.n_classdefs do
+			if nclassdef isa AStdClassdef and nclassdef.get_annotations("table").not_empty then
+				nmodule.orm_tables.add nclassdef
+
+				# Orm table need to extend from OrmTable so that it's known by the compiler that
+				# they implement the main ORM method
+				var sc = toolcontext.parse_superclass("OrmTable")
+				sc.location = nclassdef.location
+				nclassdef.n_propdefs.add sc
+			end
+		end
+
+		if nmodule.orm_tables.length == 0 then return
+
+		var code = new Array[String]
+		code.add "redef class OrmMapper"
+		code.add "	redef fun create_class(name) do"
+		code.add "		return super"
+		code.add "	end"
+		code.add "end"
+
+		nmodule.n_classdefs.add toolcontext.parse_classdef(code.join("\n"))
 	end
 
 	redef fun process_annotated_node(node, nat)
@@ -66,7 +92,7 @@ private class OrmPhasePhaseOne
 			self.process_orm_named(node, nat)
 		else if text == "translated_by" then 
 			self.process_orm_translated(node, nat)
-		else 
+		else
 			return
 		end
     end
@@ -116,6 +142,54 @@ private class OrmPhasePhaseTwo
 			assert nclassdef isa AStdClassdef
 			fill_orm_write_fields(nclassdef, npropdef)
 		end
+
+		if nmodule.orm_tables.length > 0 then
+			fill_create_class(nmodule, nmodule.orm_tables)
+		end
+	end
+
+	fun fill_create_class(nmodule: AModule, orm_tables: Array[AClassdef]) do
+		var orm_mapper_redef = null
+
+		for nclassdef in nmodule.n_classdefs do
+			if not nclassdef isa AStdClassdef then continue
+			var n_qid = nclassdef.n_qid
+			if n_qid != null and n_qid.n_id.text == "OrmMapper" then orm_mapper_redef = nclassdef
+		end
+
+		assert orm_mapper_redef != null
+
+		var orm_create_class_method = null
+
+		for npropdef in orm_mapper_redef.n_propdefs do
+			if npropdef isa AMethPropdef then
+				var id = npropdef.n_methid
+				if id isa AIdMethid and id.n_id.text == "create_class" then
+					orm_create_class_method = npropdef
+				end
+			end
+		end
+
+		assert orm_create_class_method != null
+
+		var code = new Array[String]
+		code.add "redef fun create_class(name)"
+		code.add "do"
+
+		for orm_table in orm_tables do
+			var concrete_name = orm_table.mclass.name
+			code.add "	if name == \"{concrete_name}\" then return new {concrete_name}"
+		end
+		
+		code.add "	return super"
+		code.add "end"
+
+		var npropdef = toolcontext.parse_propdef(code.join("\n")).as(AMethPropdef)
+		orm_create_class_method.n_block = npropdef.n_block
+
+		# Run the literal phase on the generated code
+		var v = new LiteralVisitor(toolcontext)
+		v.enter_visit(npropdef.n_block)
 	end
 
 	fun fill_orm_read_fields(nclassdef: AClassdef, method_npropdef: AMethPropdef)
@@ -123,7 +197,7 @@ private class OrmPhasePhaseTwo
 		var npropdefs = nclassdef.n_propdefs
 
 		var code = new Array[String]
-		code.add "fun orm_read_fields: Array[OrmFieldInfo]"
+		code.add "redef fun orm_read_fields: Array[OrmFieldInfo]"
 		code.add "do"
 		code.add "	var fields = new Array[OrmFieldInfo]"
 
@@ -167,7 +241,7 @@ private class OrmPhasePhaseTwo
 		var npropdefs = nclassdef.n_propdefs
 
 		var code = new Array[String]
-		code.add "fun orm_write_fields(data : HashMap[String, Object])"
+		code.add "redef fun orm_write_fields(data : HashMap[String, nullable Object])"
 		code.add "do"
 
 		for attribute in npropdefs do if attribute isa AAttrPropdef then
@@ -235,6 +309,7 @@ end
 redef class AModule
 	private var read_fields_to_fill = new Array[AMethPropdef]
 	private var write_fields_to_fill = new Array[AMethPropdef]
+	private var orm_tables = new Array[AClassdef]
 end
 
 redef class ADefinition
