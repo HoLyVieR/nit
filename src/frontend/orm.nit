@@ -33,6 +33,11 @@ private class OrmPhasePhaseOne
 
 	redef fun process_nclassdef(nclassdef)
 	do
+		# Only look at classes
+		if not nclassdef isa AStdClassdef then
+			return
+		end
+
 		var npropdefs = nclassdef.n_propdefs
 		var count_fields_prop = 0
 
@@ -55,6 +60,46 @@ private class OrmPhasePhaseOne
 			npropdef = toolcontext.parse_propdef(code).as(AMethPropdef)
 			nclassdef.n_propdefs.add npropdef
 			nclassdef.parent.as(AModule).write_fields_to_fill.add npropdef
+
+			# Function that return the name of the DB
+			var actual_name = nclassdef.n_qid.n_id.text
+
+			if nclassdef.get_annotations("named").not_empty then
+				actual_name = nclassdef.get_annotations("named").first.n_args.first.collect_text
+				actual_name = actual_name.substring(1, actual_name.length-2)
+			end
+
+			var code_get = new Array[String]
+			code_get.add "redef fun orm_get_table: String"
+			code_get.add "do"
+			code_get.add "	return \"{actual_name}\""
+			code_get.add "end"
+			npropdef = toolcontext.parse_propdef(code_get.join("\n")).as(AMethPropdef)
+			nclassdef.n_propdefs.add npropdef
+
+			# Function that return the name of the primary key
+			var primary_key = null
+
+			for attribute in nclassdef.n_propdefs do
+				if attribute isa AAttrPropdef and attribute.get_annotations("primary").not_empty then
+					primary_key = attribute.name
+
+					if attribute.get_annotations("named").not_empty then
+						primary_key = attribute.get_annotations("named").first.n_args.first.collect_text
+						primary_key = primary_key.substring(1, primary_key.length-2)
+					end
+				end
+			end
+
+			if primary_key != null then
+				code_get = new Array[String]
+				code_get.add "redef fun orm_get_primary_key: String"
+				code_get.add "do"
+				code_get.add "	return \"{primary_key}\""
+				code_get.add "end"
+				npropdef = toolcontext.parse_propdef(code_get.join("\n")).as(AMethPropdef)
+				nclassdef.n_propdefs.add npropdef
+			end
 		end
 	end
 

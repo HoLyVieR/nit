@@ -18,19 +18,48 @@ end
 
 class MyTestClass
     table
+    named "MyDBTable"
 
-    var field1 : Int = 0 is field, named "id"
+    var field1 : Int = 0 is primary, field, named "id"
     var field2 : Int = 0 is field, translated_by "DecoratedIntTranslator"
 end
 
-var query = with_db("test.sqlite3").
+var entry = with_db("test.sqlite3").
     select.
     from("MyTestClass").
-    where("id = ?", [555])
+    where("id = ?", [800]).
+    first.
+    as(MyTestClass)
 
-for value in query
-do
-    value = value.as(MyTestClass)
-    print("Value Field 1 : " + value.field1.to_s)
-    print("Value Field 2 : " + value.field2.to_s)
+print("Entry with ID = 800")
+print("---")
+print("Value Field 1 : " + entry.field1.to_s)
+print("Value Field 2 : " + entry.field2.to_s)
+print("---")
+
+var query = with_db("test.sqlite3").
+    select.
+    from("MyTestClass")
+
+print("")
+print("All entries")
+print("---")
+
+for v in query do
+    v = v.as(MyTestClass)
+    print("Value Field 1 : " + v.field1.to_s)
+    print("Value Field 2 : " + v.field2.to_s)
+    print("---")
 end
+
+# entry.field2 = 888
+# entry.save
+
+# var new_entry = new MyTestClass
+# new_entry.field1 = 111
+# new_entry.field2 = 333
+# with_db("test.sqlite3").
+#     insert.
+#     into("MyTestClass").
+#     value(new_entry).
+#     execute
