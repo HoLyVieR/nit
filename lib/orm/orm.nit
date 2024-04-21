@@ -211,7 +211,7 @@ class InsertQuery
     end
 
     fun value(data : OrmTable): InsertQuery do
-        assert data.orm_get_table == self.from_type
+        assert data.orm_get_type == self.from_type
         self.values.add data
         return self
     end
@@ -310,15 +310,30 @@ abstract class OrmTable
     var orm_saved_db : nullable OrmOperation = null
 
     fun save do
-        assert not self.orm_is_new
         assert self.orm_saved_db != null
-        self.orm_saved_db.update.value(self)
+
+        if self.orm_is_new then
+            self.orm_saved_db.
+                insert.
+                into(self.orm_get_type).
+                value(self).
+                execute
+            
+            self.orm_is_new = false
+        else
+            self.orm_saved_db.update.value(self)
+        end
+    end
+
+    fun attach_db(db : OrmOperation) do
+        self.orm_saved_db = db
     end
 
     fun orm_write_fields(data : HashMap[String, nullable Object]) is abstract
     fun orm_read_fields: Array[OrmFieldInfo] is abstract
     fun orm_get_table: String is abstract
     fun orm_get_primary_key: String is abstract
+    fun orm_get_type: String is abstract
 end
 
 abstract class OrmTranslator[T]

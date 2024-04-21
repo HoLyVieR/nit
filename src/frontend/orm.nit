@@ -62,7 +62,8 @@ private class OrmPhasePhaseOne
 			nclassdef.parent.as(AModule).write_fields_to_fill.add npropdef
 
 			# Function that return the name of the DB
-			var actual_name = nclassdef.n_qid.n_id.text
+			var type_name = nclassdef.n_qid.n_id.text
+			var actual_name = type_name
 
 			if nclassdef.get_annotations("named").not_empty then
 				actual_name = nclassdef.get_annotations("named").first.n_args.first.collect_text
@@ -73,6 +74,14 @@ private class OrmPhasePhaseOne
 			code_get.add "redef fun orm_get_table: String"
 			code_get.add "do"
 			code_get.add "	return \"{actual_name}\""
+			code_get.add "end"
+			npropdef = toolcontext.parse_propdef(code_get.join("\n")).as(AMethPropdef)
+			nclassdef.n_propdefs.add npropdef
+
+			code_get = new Array[String]
+			code_get.add "redef fun orm_get_type: String"
+			code_get.add "do"
+			code_get.add "	return \"{type_name}\""
 			code_get.add "end"
 			npropdef = toolcontext.parse_propdef(code_get.join("\n")).as(AMethPropdef)
 			nclassdef.n_propdefs.add npropdef
