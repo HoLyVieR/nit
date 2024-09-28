@@ -32,6 +32,7 @@ import parallelization_phase
 import i18n_phase
 import regex_phase
 import actors_injection_phase
+import orm
 
 redef class ToolContext
 	# FIXME: there is conflict in linex in nitc, so use this trick to force invocation
@@ -50,6 +51,9 @@ redef class ToolContext
 		phases.add_edge(literal_phase, serialization_phase_pre_model)
 		phases.add_edge(modelize_class_phase, serialization_phase_pre_model)
 		phases.add_edge(modelize_class_phase, parallelization_phase)
+		phases.add_edge(orm_phase_two, modelize_class_phase)
+		phases.add_edge(orm_phase_two, modelize_property_phase)
+		phases.add_edge(modelize_class_phase, orm_phase_one)
 		return true
 	end
 end
